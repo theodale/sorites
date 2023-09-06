@@ -9,16 +9,22 @@ import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Po
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 import {IUniswapV3MintCallback} from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3MintCallback.sol";
-// import {IUniswapV3SwapCallback} from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
+import {IUniswapV3SwapCallback} from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
 
 // TODO:
 // - LP calc when no shares minted already
 // - Slot packing for feeNumerator and Denominator
 // - What are tokens owed => the collect Uniswap pool method
+// - Implement buffer
+// - Add to debt when deposit is made
 
 /// @notice Liquidity pool for a Uniswap V3 position.
 /// @dev Utilises ERC20 LP tokens.
-contract SoritesUniswapV3Pool is ERC20("SOR-UNIV3", "Sorites UniswapV3 Share"), IUniswapV3MintCallback {
+contract SoritesUniswapV3Pool is
+    ERC20("SOR-UNIV3", "Sorites UniswapV3 Share"),
+    IUniswapV3MintCallback,
+    IUniswapV3SwapCallback
+{
     // *** LIBRARIES ***
 
     using SafeERC20 for IERC20;
@@ -130,26 +136,60 @@ contract SoritesUniswapV3Pool is ERC20("SOR-UNIV3", "Sorites UniswapV3 Share"), 
     // *** ALTER POSITION ***
 
     /// @notice Updates the tick boundaries of the pool's underlying Uniswap position.
-    function editPosition() external managerOnly {
+    function editPosition(int24 _newLowerTick, int24 _newUpperTick) external managerOnly {
         // Get liquidity of pool's Uniswap position
         (uint128 liquidity,,,,) = _positionInfo(uniswapPool);
-
-        // Cache from storage
-        int24 lowerTick_ = lowerTick;
-        int24 upperTick_ = upperTick;
 
         // Burn said liquidity to claim underlying tokens
         (uint256 token0LiquidityClaimed, uint256 token1LiquidityClaimed) =
             uniswapPool.burn(lowerTick, upperTick, liquidity);
 
-        // Claim any unclaimed fees
+        // Claim position's fees => recomputed by previous burn call
         (uint256 token0FeesClaimed, uint256 token1FeesClaimed) =
-            uniswapPool.collect(address(this), lowerTick_, upperTick_, type(uint128).max, type(uint128).max);
+            uniswapPool.collect(address(this), lowerTick, upperTick, type(uint128).max, type(uint128).max);
+
+        // Get tokens available for deposit post liqudity withdrawal and fee claim
+        uint256 token0Available = token0.balanceOf(address(this));
+        uint256 token1Available = token1.balanceOf(address(this));
+
+        // Get Uniswap pool's current price
+        (uint160 sqrtRatioX96,,,,,,) = uniswapPool.slot0();
+
+        // Calculate maximum liquidity that can be deposited with available tokens betweeen updated ticks
+        uint128 maxLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtRatioX96,
+            _newLowerTick.getSqrtRatioAtTick(),
+            _newUpperTick.getSqrtRatioAtTick(),
+            token0Available,
+            token1Available
+        );
+
+        // Deposit liquidity into updated Uniswap position
+        (uint256 token0Deposited, uint256 token1Deposited) =
+            uniswapPool.mint(address(this), _newLowerTick, _newUpperTick, maxLiquidity, "");
+
+        // Remove deposited amounts from available tokens
+        token0Available -= token0Deposited;
+        token1Available -= token1Deposited;
+
+        // We want to swap remaining tokens so that their ratio matches the deposited ratio
+        if (token0Deposited * token1Available > token0Available * token1Deposited) {
+            // Relatively more token1 in available tokens => swap token1 for token0
+        } else {
+            // Relatively more token0 in available tokens => swap token0 for token1
+        }
+
+        // zeroForOne
+
+        // uniswapPool.swap(address(this), );
+
+        // Redeposit new liquidity
     }
 
     // *** COMPOUND YIELD ***
 
     // The fees may not be in correct proportion => you may need to swap, and you may have some left over
+    // Consider tokens sitting in contract that cannot be staked
 
     /// @notice Reinvests unclaimed fees back into underlying Uniswap position.
     function compoundYield() external {}
@@ -163,6 +203,12 @@ contract SoritesUniswapV3Pool is ERC20("SOR-UNIV3", "Sorites UniswapV3 Share"), 
     {
         _transferTokens(_token0Amount, _token1Amount);
     }
+
+    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data)
+        external
+        override
+        uniswapOnly
+    {}
 
     /// *** INTERNAL ***
 
