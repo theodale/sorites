@@ -18,10 +18,10 @@ import {IUniswapV3SwapCallback} from "@uniswap/v3-core/contracts/interfaces/call
 // - Implement buffer
 // - Add to debt when deposit is made
 
-/// @notice Liquidity pool for a Uniswap V3 position.
+/// @notice Fixed yield pool for UniswapV3.
 /// @dev Utilises ERC20 LP tokens.
 contract SoritesUniswapV3Pool is
-    ERC20("SOR-UNIV3", "Sorites UniswapV3 Share"),
+    ERC20("SOR-UNIV3", "Sorites UniswapV3"),
     IUniswapV3MintCallback,
     IUniswapV3SwapCallback
 {
@@ -50,6 +50,8 @@ contract SoritesUniswapV3Pool is
     uint128 public feeNumerator;
     uint128 public feeDenominator;
 
+    address public treasury;
+
     // *** MODIFIERS ***
 
     modifier managerOnly() {
@@ -64,10 +66,11 @@ contract SoritesUniswapV3Pool is
 
     // *** CONSTRUCTOR ***
 
-    constructor(address _uniswapPool, address _manager) {
+    constructor(address _uniswapPool, address _manager, address _treasury) {
         // Assign arguments to state variables
         uniswapPool = IUniswapV3Pool(_uniswapPool);
         manager = _manager;
+        treasury = _treasury;
 
         // Get Uniswap pool tokens
         token0 = IERC20(uniswapPool.token0());
