@@ -1,0 +1,2 @@
+- deploy all new sorites pools through the core => can only have one per underlying pool
+- what to do if no autocompound called - aave has no autocompound as well

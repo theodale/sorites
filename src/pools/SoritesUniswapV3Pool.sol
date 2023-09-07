@@ -36,7 +36,7 @@ contract SoritesUniswapV3Pool is
     address public manager;
 
     // Underlying Uniswap V3 pool
-    IUniswapV3Pool public uniswapPool;
+    IUniswapV3Pool public immutable uniswapPool;
 
     // Pool Tokens
     IERC20 public token0;
@@ -182,16 +182,12 @@ contract SoritesUniswapV3Pool is
             // Relatively more token0 in available tokens => swap token0 for token1
         }
 
-        // zeroForOne
-
-        // uniswapPool.swap(address(this), );
-
+        // Swap
         // Redeposit new liquidity
     }
 
     // *** COMPOUND YIELD ***
 
-    // The fees may not be in correct proportion => you may need to swap, and you may have some left over
     // Consider tokens sitting in contract that cannot be staked
 
     /// @notice Reinvests unclaimed fees back into underlying Uniswap position.
